@@ -1,10 +1,10 @@
 PROJECT_ROOT ?= $(PWD)
 
 managerService:
-	go run ./manager
+	@go run ./manager
 
 clientService:
-	go run ./client/
+	@go run ./client/
 
 protobuf:
 	#brew install protoc-gen-go
@@ -13,3 +13,9 @@ protobuf:
 
 vendor:
 	go mod tidy; go mod vendor
+
+kafka-up:
+	cd $(PROJECT_ROOT)/docker/; docker-compose up -d
+
+kafka-down:
+	cd $(PROJECT_ROOT)/docker/; docker-compose down --remove-orphans
