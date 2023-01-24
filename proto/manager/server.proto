@@ -1,0 +1,24 @@
+syntax = "proto3";
+package manager;
+option go_package = ".;pb";
+
+message ConnectRequest {
+  string ConsumerGroup = 1;
+}
+
+message ConnectResponse {
+  bytes Payload = 1;
+  int32 TaskID = 2;
+}
+
+message OutcomeRequest {
+  bytes ResponsePayload = 1;
+  int32 TaskID = 2;
+}
+
+message OutcomeResponse {}
+
+service Manager {
+  rpc Connect(ConnectRequest) returns (stream ConnectResponse) {}
+  rpc Outcome(OutcomeRequest) returns (OutcomeResponse) {}
+}
