@@ -12,3 +12,15 @@
   - consume connect message
   - run multiple instances sharing same ConsumerGroup
   - only one client should log the message.
+
+### Useful Commands
+```
+kafka-topics --bootstrap-server broker:9092 --create --topic test-consume-once --partitions 3
+kafka-topics --bootstrap-server broker:9092 --describe --topic test-consume-once
+
+kafka-consumer-groups  --bootstrap-server broker:9092 --list
+kafka-consumer-groups  --bootstrap-server broker:9092 --describe --group sample-client
+
+produce message
+kafka-console-producer --bootstrap-server broker:9092 --topic test-consume-once
+```

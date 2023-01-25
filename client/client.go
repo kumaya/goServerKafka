@@ -2,9 +2,10 @@ package main
 
 import (
 	"context"
-	pb "github.com/kumaya/goServerKafka/proto/manager"
 	"log"
 	"time"
+
+	pb "github.com/kumaya/goServerKafka/proto/manager"
 )
 
 const (
@@ -25,11 +26,11 @@ func HandleConnect(client pb.ManagerClient) error {
 			log.Printf("failed while reading: %v", err)
 			return err
 		}
-		if chunk.GetPayload() == nil || chunk.GetTaskID() == 0 {
-			log.Print("empty heartbeat message.")
+		if chunk.GetPayload() == nil {
+			//log.Print("empty heartbeat message.")
 		} else {
-			log.Printf("received response: %v", chunk.GetPayload())
-			log.Printf("received response: %v", chunk.GetTaskID())
+			log.Printf("received response: %v", string(chunk.GetPayload()))
+			//log.Printf("received response: %v", chunk.GetTaskID())
 		}
 	}
 

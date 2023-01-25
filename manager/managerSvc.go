@@ -2,9 +2,10 @@ package main
 
 import (
 	"context"
-	pb "github.com/kumaya/goServerKafka/proto/manager"
 	"log"
 	"time"
+
+	pb "github.com/kumaya/goServerKafka/proto/manager"
 )
 
 type managerServer struct {
@@ -16,14 +17,31 @@ func NewManagerServer() pb.ManagerServer {
 }
 
 func (m *managerServer) Connect(request *pb.ConnectRequest, server pb.Manager_ConnectServer) error {
+	cChan := make(chan interface{})
 	log.Printf("connect invoked by %s", request.GetConsumerGroup())
+	if err := ConnectAndConsume(server.Context(), request.GetConsumerGroup(), cChan); err != nil {
+		log.Printf("error in kafka, err %v", err)
+		return err
+	}
 	for {
 		select {
+		case message := <-cChan:
+			log.Printf("message received from kafka: %s", message)
+			err := server.Send(&pb.ConnectResponse{
+				Payload: message.([]byte),
+			})
+			if err != nil {
+				log.Printf("error sending payload to client, err %v", err)
+				return err
+			}
+		case <-server.Context().Done():
+			log.Printf("client closed the connection")
+			return nil
 		default:
 			time.Sleep(1 * time.Second)
 			err := server.Send(&pb.ConnectResponse{})
 			if err != nil {
-				log.Printf("error sending to client, err %v", err)
+				log.Printf("error sending heartbeat to client, err %v", err)
 				return err
 			}
 		}

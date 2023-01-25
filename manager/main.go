@@ -38,4 +38,4 @@ func main() {
 }
 
 // create kafka consumer from incoming connection consumer group
-// consume message from kafka and give to an active member of a consumer group
+// consume msg from kafka and give to an active member of a consumer group
