@@ -22,6 +22,7 @@ func main() {
 	pConf.Producer.RequiredAcks = sarama.WaitForAll
 	pConf.Producer.Return.Successes = true
 	pConf.Producer.Retry.Max = 5
+	pConf.Producer.Compression = sarama.CompressionGZIP
 
 	producer, err := sarama.NewSyncProducer(brokerList, pConf)
 	if err != nil {
