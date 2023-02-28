@@ -2,11 +2,18 @@ syntax = "proto3";
 package manager;
 option go_package = ".;pb";
 
-message ConnectRequest {
+message ClientRequest {
   string ConsumerGroup = 1;
+  message MarkIdentifier {
+    string id = 1;
+  }
+  oneof Command {
+    MarkIdentifier ack = 2;
+    uint32 keepalive = 3;
+  }
 }
 
-message ConnectResponse {
+message ServerResponse {
   bytes Payload = 1;
   int32 TaskID = 2;
 }
@@ -19,6 +26,6 @@ message OutcomeRequest {
 message OutcomeResponse {}
 
 service Manager {
-  rpc Connect(ConnectRequest) returns (stream ConnectResponse) {}
+  rpc Connect(stream ClientRequest) returns (stream ServerResponse) {}
   rpc Outcome(OutcomeRequest) returns (OutcomeResponse) {}
 }

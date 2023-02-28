@@ -6,6 +6,7 @@ import (
 	"google.golang.org/grpc/keepalive"
 	"log"
 	"net"
+	"runtime"
 	"time"
 )
 
@@ -24,6 +25,13 @@ func main() {
 	mgrSvr := NewManagerServer()
 	pb.RegisterManagerServer(grpcServer, mgrSvr)
 
+	go func() {
+		for {
+			log.Print("=============== goroutines count : ", runtime.NumGoroutine())
+			time.Sleep(5 * time.Second)
+		}
+	}()
+
 	listener, err := net.Listen("tcp", port)
 	if err != nil {
 		log.Fatalf("failed to listen on port %s, err: %v", port, err)
@@ -36,6 +44,3 @@ func main() {
 	defer grpcServer.GracefulStop()
 	return
 }
-
-// create kafka consumer from incoming connection consumer group
-// consume msg from kafka and give to an active member of a consumer group

@@ -8,58 +8,58 @@ import (
 	"github.com/Shopify/sarama"
 )
 
-var (
-	brokerList = []string{"localhost:9092"}
-)
-
-const (
-	topic    = "test-consume-once"
-	clientID = "manager-svc"
-)
-
-func ConnectAndConsume(ctx context.Context, cg string, consumeChan chan<- interface{}) error {
-	config := sarama.NewConfig()
-	config.Version = sarama.DefaultVersion
-	config.ClientID = clientID
-	config.Consumer.Offsets.Initial = sarama.OffsetOldest
-	config.Consumer.Group.Rebalance.GroupStrategies = []sarama.BalanceStrategy{sarama.BalanceStrategySticky}
-
-	consumer := Consumer{ready: make(chan bool), msg: consumeChan}
-	consumerGroup, err := sarama.NewConsumerGroup(brokerList, cg, config)
-	if err != nil {
-		return err
-	}
-	wg := &sync.WaitGroup{}
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for {
-			if err := consumerGroup.Consume(ctx, []string{topic}, &consumer); err != nil {
-				log.Printf("error from consumer: %v", err)
-				return
-			}
-			if ctx.Err() != nil {
-				log.Printf("client connection terminated. err %v", err)
-				return
-			}
-			consumer.ready = make(chan bool)
-		}
-	}()
-	<-consumer.ready
-	log.Printf("sarama consumer up and running")
-	//wg.Wait()
-	log.Printf("consuming message...")
-	return nil
+type KakfaConfig struct {
+	ClientID   string
+	BrokerList []string
+	Topic      []string
 }
 
 type Consumer struct {
-	ready chan bool
-	msg   chan<- interface{}
+	Ready            chan bool
+	Once             sync.Once
+	Message          chan<- interface{}
+	InFlightMessages map[interface{}]interface{}
+	Ack              <-chan interface{}
+	Mut              sync.Mutex
+}
+
+func (k *KakfaConfig) Subscribe(ctx context.Context, groupId string, consumer *Consumer) error {
+	config := sarama.NewConfig()
+	config.Version = sarama.DefaultVersion
+	config.ClientID = k.ClientID
+	config.Consumer.Offsets.Initial = sarama.OffsetOldest
+	config.Consumer.Group.Rebalance.GroupStrategies = []sarama.BalanceStrategy{sarama.BalanceStrategySticky}
+
+	consumerGroup, err := sarama.NewConsumerGroup(k.BrokerList, groupId, config)
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		for {
+			if ctx.Err() != nil {
+				log.Printf("(kafkaConsumer) client connection terminated for context error. err %v", ctx.Err())
+				return
+			}
+			log.Printf("starting loop to consume")
+			if err = consumerGroup.Consume(ctx, k.Topic, consumer); err != nil {
+				log.Printf("error while starting consume loop: %v", err)
+				return
+			}
+		}
+	}()
+	<-consumer.Ready
+	log.Printf("sarama consumer up and running. Consuming messages...")
+	//wg.Wait()
+	return nil
 }
 
 func (consumer *Consumer) Setup(sarama.ConsumerGroupSession) error {
 	// Mark the consumer as ready
-	close(consumer.ready)
+	consumer.Once.Do(func() {
+		log.Printf("closing ready channel")
+		close(consumer.Ready)
+	})
 	return nil
 }
 
@@ -71,11 +71,26 @@ func (consumer *Consumer) ConsumeClaim(session sarama.ConsumerGroupSession, clai
 	for {
 		select {
 		case message := <-claim.Messages():
-			consumer.msg <- message.Value
+			consumer.Message <- message.Value
+			consumer.Mut.Lock()
+			consumer.InFlightMessages[string(message.Value)] = message
+			consumer.Mut.Unlock()
 			//log.Printf("Message claimed: value = %s, timestamp = %v, topic = %s", string(message.Value), message.Timestamp, message.Topic)
-			session.MarkMessage(message, "")
+			//session.MarkMessage(message, "")
 		case <-session.Context().Done():
+			log.Printf("(kafkaConsumer/ConsumeClaim) closing")
 			return nil
+		case messageStr := <-consumer.Ack:
+			//log.Printf("message acked; %+v %v", messageStr, consumer.InFlightMessages)
+			messageID := messageStr.(string)
+			consumer.Mut.Lock()
+			kMsg, ok := consumer.InFlightMessages[messageID]
+			delete(consumer.InFlightMessages, messageID)
+			consumer.Mut.Unlock()
+			if !ok {
+				continue
+			}
+			session.MarkMessage(kMsg.(*sarama.ConsumerMessage), "")
 		}
 	}
 }

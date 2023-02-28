@@ -22,7 +22,7 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ManagerClient interface {
-	Connect(ctx context.Context, in *ConnectRequest, opts ...grpc.CallOption) (Manager_ConnectClient, error)
+	Connect(ctx context.Context, opts ...grpc.CallOption) (Manager_ConnectClient, error)
 	Outcome(ctx context.Context, in *OutcomeRequest, opts ...grpc.CallOption) (*OutcomeResponse, error)
 }
 
@@ -34,23 +34,18 @@ func NewManagerClient(cc grpc.ClientConnInterface) ManagerClient {
 	return &managerClient{cc}
 }
 
-func (c *managerClient) Connect(ctx context.Context, in *ConnectRequest, opts ...grpc.CallOption) (Manager_ConnectClient, error) {
+func (c *managerClient) Connect(ctx context.Context, opts ...grpc.CallOption) (Manager_ConnectClient, error) {
 	stream, err := c.cc.NewStream(ctx, &Manager_ServiceDesc.Streams[0], "/manager.Manager/Connect", opts...)
 	if err != nil {
 		return nil, err
 	}
 	x := &managerConnectClient{stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
 	return x, nil
 }
 
 type Manager_ConnectClient interface {
-	Recv() (*ConnectResponse, error)
+	Send(*ClientRequest) error
+	Recv() (*ServerResponse, error)
 	grpc.ClientStream
 }
 
@@ -58,8 +53,12 @@ type managerConnectClient struct {
 	grpc.ClientStream
 }
 
-func (x *managerConnectClient) Recv() (*ConnectResponse, error) {
-	m := new(ConnectResponse)
+func (x *managerConnectClient) Send(m *ClientRequest) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *managerConnectClient) Recv() (*ServerResponse, error) {
+	m := new(ServerResponse)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
@@ -79,7 +78,7 @@ func (c *managerClient) Outcome(ctx context.Context, in *OutcomeRequest, opts ..
 // All implementations must embed UnimplementedManagerServer
 // for forward compatibility
 type ManagerServer interface {
-	Connect(*ConnectRequest, Manager_ConnectServer) error
+	Connect(Manager_ConnectServer) error
 	Outcome(context.Context, *OutcomeRequest) (*OutcomeResponse, error)
 	mustEmbedUnimplementedManagerServer()
 }
@@ -88,7 +87,7 @@ type ManagerServer interface {
 type UnimplementedManagerServer struct {
 }
 
-func (UnimplementedManagerServer) Connect(*ConnectRequest, Manager_ConnectServer) error {
+func (UnimplementedManagerServer) Connect(Manager_ConnectServer) error {
 	return status.Errorf(codes.Unimplemented, "method Connect not implemented")
 }
 func (UnimplementedManagerServer) Outcome(context.Context, *OutcomeRequest) (*OutcomeResponse, error) {
@@ -108,15 +107,12 @@ func RegisterManagerServer(s grpc.ServiceRegistrar, srv ManagerServer) {
 }
 
 func _Manager_Connect_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(ConnectRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
-	}
-	return srv.(ManagerServer).Connect(m, &managerConnectServer{stream})
+	return srv.(ManagerServer).Connect(&managerConnectServer{stream})
 }
 
 type Manager_ConnectServer interface {
-	Send(*ConnectResponse) error
+	Send(*ServerResponse) error
+	Recv() (*ClientRequest, error)
 	grpc.ServerStream
 }
 
@@ -124,8 +120,16 @@ type managerConnectServer struct {
 	grpc.ServerStream
 }
 
-func (x *managerConnectServer) Send(m *ConnectResponse) error {
+func (x *managerConnectServer) Send(m *ServerResponse) error {
 	return x.ServerStream.SendMsg(m)
+}
+
+func (x *managerConnectServer) Recv() (*ClientRequest, error) {
+	m := new(ClientRequest)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 func _Manager_Outcome_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -163,6 +167,7 @@ var Manager_ServiceDesc = grpc.ServiceDesc{
 			StreamName:    "Connect",
 			Handler:       _Manager_Connect_Handler,
 			ServerStreams: true,
+			ClientStreams: true,
 		},
 	},
 	Metadata: "proto/manager/server.proto",
