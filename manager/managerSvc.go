@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/Shopify/sarama"
 	pb "github.com/kumaya/goServerKafka/proto/manager"
 	"io"
 	"log"
@@ -19,10 +20,19 @@ const (
 
 type managerServer struct {
 	pb.ManagerServer
+	saramaCfg *sarama.Config
 }
 
 func NewManagerServer() pb.ManagerServer {
-	return &managerServer{}
+	// use common sarama config to avoid memory leak so the metrics are registered only once.
+	// https://github.com/Shopify/sarama/pull/991#issuecomment-349117911
+	saramaCfg := sarama.NewConfig()
+	saramaCfg.Version = sarama.DefaultVersion
+	saramaCfg.ClientID = clientID
+	saramaCfg.Consumer.Offsets.Initial = sarama.OffsetOldest
+	saramaCfg.Consumer.Group.Rebalance.GroupStrategies = []sarama.BalanceStrategy{sarama.BalanceStrategySticky}
+
+	return &managerServer{saramaCfg: saramaCfg}
 }
 
 func (m *managerServer) Connect(stream pb.Manager_ConnectServer) error {
@@ -55,6 +65,7 @@ func (m *managerServer) Connect(stream pb.Manager_ConnectServer) error {
 		ClientID:   clientID,
 		BrokerList: brokerList,
 		Topic:      []string{topic},
+		SaramaCfg:  m.saramaCfg,
 	}
 	kafkaConsumer := Consumer{
 		Ready:            make(chan bool),

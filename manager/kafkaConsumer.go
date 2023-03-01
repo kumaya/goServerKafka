@@ -12,6 +12,7 @@ type KakfaConfig struct {
 	ClientID   string
 	BrokerList []string
 	Topic      []string
+	SaramaCfg  *sarama.Config
 }
 
 type Consumer struct {
@@ -24,13 +25,7 @@ type Consumer struct {
 }
 
 func (k *KakfaConfig) Subscribe(ctx context.Context, groupId string, consumer *Consumer) error {
-	config := sarama.NewConfig()
-	config.Version = sarama.DefaultVersion
-	config.ClientID = k.ClientID
-	config.Consumer.Offsets.Initial = sarama.OffsetOldest
-	config.Consumer.Group.Rebalance.GroupStrategies = []sarama.BalanceStrategy{sarama.BalanceStrategySticky}
-
-	consumerGroup, err := sarama.NewConsumerGroup(k.BrokerList, groupId, config)
+	consumerGroup, err := sarama.NewConsumerGroup(k.BrokerList, groupId, k.SaramaCfg)
 	if err != nil {
 		return err
 	}
