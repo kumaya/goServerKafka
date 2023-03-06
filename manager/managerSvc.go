@@ -2,11 +2,15 @@ package main
 
 import (
 	"context"
-	"github.com/Shopify/sarama"
-	pb "github.com/kumaya/goServerKafka/proto/manager"
+	"fmt"
 	"io"
 	"log"
 	"sync"
+
+	"github.com/Shopify/sarama"
+	"google.golang.org/grpc/metadata"
+
+	pb "github.com/kumaya/goServerKafka/proto/manager"
 )
 
 var (
@@ -14,7 +18,6 @@ var (
 )
 
 const (
-	topic    = "test-consume-once"
 	clientID = "manager-svc"
 )
 
@@ -35,12 +38,27 @@ func NewManagerServer() pb.ManagerServer {
 	return &managerServer{saramaCfg: saramaCfg}
 }
 
+func getGroupNTopic(ctx context.Context) (string, error) {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return "", fmt.Errorf("%s", "unable to retrieve context metadata.")
+	}
+	log.Printf("%+v", md)
+	entries, ok := md["realm-id"]
+	if !ok || len(entries) < 1 {
+		return "", fmt.Errorf("unable to find request header 'realm-id' in context metadata")
+	}
+	last := len(entries) - 1
+	return entries[last], nil
+}
+
 func (m *managerServer) Connect(stream pb.Manager_ConnectServer) error {
-	// TODO:
-	//  terminate subscription on client stream close
-	//  terminate subscription on server stream close
-	//  send stream message to client on message in kafka
-	//  ack message in kafka once ack received on client stream.
+	// Get the consumer group and topic from incoming context
+	topic, err := getGroupNTopic(stream.Context())
+	if err != nil {
+		log.Printf("unable to retrieve metadata from context. err: %v", err)
+		return err
+	}
 
 	parentCtx, cancel := context.WithCancel(stream.Context())
 	defer func() {
@@ -49,7 +67,7 @@ func (m *managerServer) Connect(stream pb.Manager_ConnectServer) error {
 	}()
 
 	//  find the consumerGroup
-	consumerGrp := "sample-client"
+	consumerGrp := fmt.Sprintf("%s-%s", "sample-client", topic)
 	log.Printf("connect invoked by %s", consumerGrp)
 
 	//  create kafka subscription for the consumer group
@@ -75,7 +93,7 @@ func (m *managerServer) Connect(stream pb.Manager_ConnectServer) error {
 		Ack:              clientAckChan,
 		Mut:              sync.Mutex{},
 	}
-	err := kafkaCfg.Subscribe(parentCtx, consumerGrp, &kafkaConsumer)
+	err = kafkaCfg.Subscribe(parentCtx, consumerGrp, &kafkaConsumer)
 	if err != nil {
 		log.Printf("error in kafka, err %v", err)
 		return err

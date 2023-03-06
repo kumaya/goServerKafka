@@ -5,6 +5,8 @@ import (
 	"log"
 	"time"
 
+	"google.golang.org/grpc/metadata"
+
 	pb "github.com/kumaya/goServerKafka/proto/manager"
 )
 
@@ -16,6 +18,8 @@ func HandleConnect(client pb.ManagerClient) error {
 	log.Printf("invoked connect to manager")
 	ctx, cancelFunc := context.WithDeadline(context.Background(), time.Now().Add(1*time.Minute))
 	defer cancelFunc()
+
+	ctx = metadata.AppendToOutgoingContext(ctx, "Realm-ID", "test-consume-once")
 	connectStream, err := client.Connect(ctx)
 	if err != nil {
 		log.Printf("error receiving stream data. err %v", err)
