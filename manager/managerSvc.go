@@ -71,13 +71,13 @@ func (m *managerServer) Connect(stream pb.Manager_ConnectServer) error {
 	log.Printf("connect invoked by %s", consumerGrp)
 
 	//  create kafka subscription for the consumer group
-	incomingMessageChan := make(chan interface{})
-	clientAckChan := make(chan interface{})
-	inFlightMessages := make(map[interface{}]interface{})
+	incomingMessageChan := make(chan string)
+	clientAckChan := make(chan string)
+	var inFlightMessages sync.Map
 	defer func() {
 		close(incomingMessageChan)
 		close(clientAckChan)
-		inFlightMessages = nil
+		//inFlightMessages = nil
 	}()
 	kafkaCfg := KakfaConfig{
 		ClientID:   clientID,
@@ -89,7 +89,7 @@ func (m *managerServer) Connect(stream pb.Manager_ConnectServer) error {
 		Ready:            make(chan bool),
 		Once:             sync.Once{},
 		Message:          incomingMessageChan,
-		InFlightMessages: inFlightMessages,
+		InFlightMessages: &inFlightMessages,
 		Ack:              clientAckChan,
 		Mut:              sync.Mutex{},
 	}
@@ -147,7 +147,7 @@ func (m *managerServer) Connect(stream pb.Manager_ConnectServer) error {
 		case message := <-incomingMessageChan:
 			log.Printf("message received from kafka: %s", message)
 			err = stream.Send(&pb.ServerResponse{
-				Payload: message.([]byte),
+				Payload: []byte(message),
 			})
 			if err != nil {
 				log.Printf("error sending payload to client, err %v", err)

@@ -6,7 +6,6 @@ import (
 	"google.golang.org/grpc/keepalive"
 	"log"
 	"net"
-	"runtime"
 	"time"
 )
 
@@ -25,12 +24,12 @@ func main() {
 	mgrSvr := NewManagerServer()
 	pb.RegisterManagerServer(grpcServer, mgrSvr)
 
-	go func() {
-		for {
-			log.Print("=============== goroutines count : ", runtime.NumGoroutine())
-			time.Sleep(5 * time.Second)
-		}
-	}()
+	//go func() {
+	//	for {
+	//		log.Print("=============== goroutines count : ", runtime.NumGoroutine())
+	//		time.Sleep(5 * time.Second)
+	//	}
+	//}()
 
 	listener, err := net.Listen("tcp", port)
 	if err != nil {

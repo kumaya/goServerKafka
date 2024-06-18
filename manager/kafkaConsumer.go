@@ -18,9 +18,9 @@ type KakfaConfig struct {
 type Consumer struct {
 	Ready            chan bool
 	Once             sync.Once
-	Message          chan<- interface{}
-	InFlightMessages map[interface{}]interface{}
-	Ack              <-chan interface{}
+	Message          chan<- string
+	InFlightMessages *sync.Map
+	Ack              <-chan string
 	Mut              sync.Mutex
 }
 
@@ -66,25 +66,21 @@ func (consumer *Consumer) ConsumeClaim(session sarama.ConsumerGroupSession, clai
 	for {
 		select {
 		case message := <-claim.Messages():
-			consumer.Message <- message.Value
-			consumer.Mut.Lock()
-			consumer.InFlightMessages[string(message.Value)] = message
-			consumer.Mut.Unlock()
-			//log.Printf("Message claimed: value = %s, timestamp = %v, topic = %s", string(message.Value), message.Timestamp, message.Topic)
+			consumer.Message <- string(message.Value)
+			consumer.InFlightMessages.Store(string(message.Value), message)
+			log.Printf("Message claimed: value = %s, timestamp = %v, topic = %s", string(message.Value), message.Timestamp, message.Topic)
 			//session.MarkMessage(message, "")
 		case <-session.Context().Done():
 			log.Printf("(kafkaConsumer/ConsumeClaim) closing")
 			return nil
 		case messageStr := <-consumer.Ack:
-			//log.Printf("message acked; %+v %v", messageStr, consumer.InFlightMessages)
-			messageID := messageStr.(string)
-			consumer.Mut.Lock()
-			kMsg, ok := consumer.InFlightMessages[messageID]
-			delete(consumer.InFlightMessages, messageID)
-			consumer.Mut.Unlock()
+			log.Printf("message acked; %s %v", messageStr, consumer.InFlightMessages)
+			kMsg, ok := consumer.InFlightMessages.Load(messageStr)
 			if !ok {
+				log.Printf("not found %s", messageStr)
 				continue
 			}
+			consumer.InFlightMessages.Delete(messageStr)
 			session.MarkMessage(kMsg.(*sarama.ConsumerMessage), "")
 		}
 	}
